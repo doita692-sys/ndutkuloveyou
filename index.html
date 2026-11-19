@@ -32,7 +32,6 @@ function resize() {
     height = canvas.height = window.innerHeight;
     centerX = width / 2;
     centerY = height / 2;
-    // Proporsi skala disesuaikan agar identik dengan resolusi 1900x1000 scale 20
     scale = Math.min(width / 1900, height / 1000) * 20;
     if (width < 768) {
         scale = Math.min(width, height) / 42;
@@ -41,9 +40,9 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// Konfigurasi sama persis dengan Python Config
+// Konfigurasi Slow Motion
 const CFG = {
-    fps: 120,
+    fps: 50,                  // Diturunkan dari 120 ke 50 agar lebih slow motion
     yOffsetRatio: -45 / 1000,
 
     nOutline: 160,
@@ -53,11 +52,11 @@ const CFG = {
     outlineGap: 32,
     fillGap: 42,
 
-    framesPerStep: 0.5,
-    fillDelayOffset: 10,
-    centerDelay: 40,
-    fadeSpeedMin: 25,
-    fadeSpeedRand: 10,
+    framesPerStep: 0.9,       // Jeda antar titik outline lebih pelan
+    fillDelayOffset: 25,      // Jeda sebelum isi hati muncul
+    centerDelay: 65,          // Jeda sebelum tulisan tengah muncul
+    fadeSpeedMin: 10,         // Fade-in lebih halus/pelan
+    fadeSpeedRand: 5,
 
     heartWords: ["i love you anisa", "I LOVE YOU ANISA", "love you anisa"],
     centerText: "I Love You Anisa",
@@ -90,7 +89,6 @@ function heartParametric(t) {
     return { x, y: -y };
 }
 
-// Koordinat referensi 1900x1000 untuk pengecekan jarak (gap) agar persis seperti Python
 function heartToRefScreen(hx, hy) {
     return {
         x: hx * 20 + 950,
@@ -109,7 +107,7 @@ function tooClose(sx, sy, placed, gap) {
     return placed.some(p => Math.hypot(sx - p.x, sy - p.y) < gap);
 }
 
-// 1. Generate Outline (sama persis urutannya dengan Python)
+// 1. Generate Outline
 const outline = [];
 const placedOutline = [];
 for (let i = 0; i < CFG.nOutline; i++) {
@@ -136,7 +134,7 @@ const outlineSpan = outline.length > 0 ? Math.max(...outline.map(p => p.order)) 
 const fillStart = Math.floor(outlineSpan * CFG.framesPerStep) + CFG.fillDelayOffset;
 const centerStart = fillStart + CFG.centerDelay;
 
-// 2. Generate Fill (sama persis dengan Python)
+// 2. Generate Fill
 const fill = [];
 const placedFill = [];
 const maxAttempts = CFG.nFill * 80;
@@ -148,7 +146,7 @@ for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const ref = heartToRefScreen(h.x * r, h.y * r);
     if (tooClose(ref.x, ref.y, placedFill, CFG.fillGap)) continue;
     placedFill.push(ref);
-    const order = randInt(0, 50);
+    const order = randInt(0, 90);
     fill.push({
         hx: h.x * r,
         hy: h.y * r,
@@ -165,7 +163,7 @@ for (let attempt = 0; attempt < maxAttempts; attempt++) {
 
 const heartParticles = [...outline, ...fill];
 
-// 3. Floating Particles (1000 partikel seperti Python)
+// 3. Floating Particles
 class FloatingParticle {
     constructor() {
         this.randomize(true);
@@ -178,10 +176,10 @@ class FloatingParticle {
         this.size = randInt(10, 18);
         this.alpha = 0;
         this.maxAlpha = randInt(40, 120);
-        this.vx = randRange(-0.3, 0.3);
-        this.vy = randRange(-0.4, -1.2);
-        this.swaySpeed = randRange(0.01, 0.04);
-        this.swayAmount = randRange(0.3, 1.0);
+        this.vx = randRange(-0.25, 0.25);
+        this.vy = randRange(-0.3, -0.9);
+        this.swaySpeed = randRange(0.01, 0.03);
+        this.swayAmount = randRange(0.3, 0.9);
         this.phase = randRange(0, Math.PI * 2);
         this.fadingIn = true;
         this.life = 0;
@@ -193,13 +191,13 @@ class FloatingParticle {
         this.y += this.vy;
 
         if (this.fadingIn) {
-            this.alpha = Math.min(this.maxAlpha, this.alpha + 3);
+            this.alpha = Math.min(this.maxAlpha, this.alpha + 2);
             if (this.alpha >= this.maxAlpha) {
                 this.fadingIn = false;
             }
         }
         if (this.life > this.maxLife - 60) {
-            this.alpha = Math.max(0, this.alpha - 3);
+            this.alpha = Math.max(0, this.alpha - 2);
         }
 
         const offScreen = this.y < -50 || this.x < -50 || this.x > width + 50;
@@ -211,7 +209,6 @@ class FloatingParticle {
 
 const floating = Array.from({ length: CFG.nFloating }, () => new FloatingParticle());
 
-// Mengunci kecepatan logika animasi tepat di 120 FPS (sama persis dengan clock.tick(120) di Pygame)
 let frame = 0;
 const stepMs = 1000 / CFG.fps;
 let lastTime = performance.now();
@@ -239,7 +236,6 @@ function render() {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // Render floating particles
     for (let i = 0; i < floating.length; i++) {
         const fp = floating[i];
         if (fp.alpha > 0) {
@@ -250,7 +246,6 @@ function render() {
         }
     }
 
-    // Render heart particles dengan efek glow
     const scaleRatio = scale / 20;
     for (let i = 0; i < heartParticles.length; i++) {
         const p = heartParticles[i];
@@ -278,10 +273,9 @@ function render() {
         }
     }
 
-    // Render center text ("I Love You Anisa")
     if (frame > centerStart) {
-        const progress = Math.min(1.0, (frame - centerStart) / 30.0);
-        const centerAlpha = Math.floor(255 * (1 - Math.exp(-progress * 8)));
+        const progress = Math.min(1.0, (frame - centerStart) / 60.0); // Fade-in teks tengah lebih lembut
+        const centerAlpha = Math.floor(255 * (1 - Math.exp(-progress * 6)));
         const pulse = 1.0 + 0.025 * Math.sin(frame * 0.05);
         const normAlpha = centerAlpha / 255;
         const centerFontSize = Math.max(18, Math.round(54 * scaleRatio * pulse));
