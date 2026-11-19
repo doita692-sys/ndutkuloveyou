@@ -32,30 +32,43 @@ function resize() {
     height = canvas.height = window.innerHeight;
     centerX = width / 2;
     centerY = height / 2;
-    scale = Math.min(width, height) / 48;
+    // Proporsi skala disesuaikan agar identik dengan resolusi 1900x1000 scale 20
+    scale = Math.min(width / 1900, height / 1000) * 20;
+    if (width < 768) {
+        scale = Math.min(width, height) / 42;
+    }
 }
 window.addEventListener("resize", resize);
 resize();
 
+// Konfigurasi sama persis dengan Python Config
 const CFG = {
-    yOffset: -25,
-    nOutline: 140,
-    nFill: 100,
-    nFloating: 180,
-    outlineGap: 35,
-    fillGap: 45,
+    fps: 120,
+    yOffsetRatio: -45 / 1000,
+
+    nOutline: 160,
+    nFill: 130,
+    nFloating: 1000,
+
+    outlineGap: 32,
+    fillGap: 42,
+
     framesPerStep: 0.5,
     fillDelayOffset: 10,
     centerDelay: 40,
+    fadeSpeedMin: 25,
+    fadeSpeedRand: 10,
+
     heartWords: ["i love you anisa", "I LOVE YOU ANISA", "love you anisa"],
     centerText: "I Love You Anisa",
     floatWords: ["love", "♥", "anisa", "❤"],
+
     colors: [
-        "rgb(255, 20, 20)",
-        "rgb(220, 20, 60)",
-        "rgb(255, 0, 0)",
-        "rgb(178, 34, 34)",
-        "rgb(255, 60, 60)"
+        [255, 20, 20],
+        [220, 20, 60],
+        [255, 0, 0],
+        [178, 34, 34],
+        [255, 60, 60]
     ]
 };
 
@@ -67,16 +80,28 @@ function randRange(min, max) {
     return Math.random() * (max - min) + min;
 }
 
+function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function heartParametric(t) {
-    const x = 16 * Math.pow(Math.sin(t), 3);
-    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    const x = 16.0 * Math.pow(Math.sin(t), 3);
+    const y = 13.0 * Math.cos(t) - 5.0 * Math.cos(2 * t) - 2.0 * Math.cos(3 * t) - Math.cos(4 * t);
     return { x, y: -y };
+}
+
+// Koordinat referensi 1900x1000 untuk pengecekan jarak (gap) agar persis seperti Python
+function heartToRefScreen(hx, hy) {
+    return {
+        x: hx * 20 + 950,
+        y: hy * 20 + 500 - 45
+    };
 }
 
 function heartToScreen(hx, hy) {
     return {
         x: hx * scale + centerX,
-        y: hy * scale + centerY + CFG.yOffset
+        y: hy * scale + centerY + (height * CFG.yOffsetRatio)
     };
 }
 
@@ -84,68 +109,75 @@ function tooClose(sx, sy, placed, gap) {
     return placed.some(p => Math.hypot(sx - p.x, sy - p.y) < gap);
 }
 
-// Generate Outline & Fill
-const heartParticles = [];
+// 1. Generate Outline (sama persis urutannya dengan Python)
+const outline = [];
 const placedOutline = [];
 for (let i = 0; i < CFG.nOutline; i++) {
     const t = (i / CFG.nOutline) * Math.PI * 2;
     const h = heartParametric(t);
-    const s = heartToScreen(h.x, h.y);
-    if (tooClose(s.x, s.y, placedOutline, CFG.outlineGap)) continue;
-    placedOutline.push(s);
-    heartParticles.push({
-        hx: h.x, hy: h.y,
+    const ref = heartToRefScreen(h.x, h.y);
+    if (tooClose(ref.x, ref.y, placedOutline, CFG.outlineGap)) continue;
+    placedOutline.push(ref);
+    outline.push({
+        hx: h.x,
+        hy: h.y,
         order: i,
         kind: "outline",
         word: randChoice(CFG.heartWords),
         color: randChoice(CFG.colors),
         alpha: 0,
         flicker: randRange(0, Math.PI * 2),
-        delay: i * CFG.framesPerStep,
+        delay: Math.floor(i * CFG.framesPerStep),
         sizeMult: randRange(0.85, 1.15)
     });
 }
 
-const outlineSpan = heartParticles.length ? Math.max(...heartParticles.map(p => p.order)) : 0;
-const fillStart = outlineSpan * CFG.framesPerStep + CFG.fillDelayOffset;
+const outlineSpan = outline.length > 0 ? Math.max(...outline.map(p => p.order)) : 0;
+const fillStart = Math.floor(outlineSpan * CFG.framesPerStep) + CFG.fillDelayOffset;
 const centerStart = fillStart + CFG.centerDelay;
 
+// 2. Generate Fill (sama persis dengan Python)
+const fill = [];
 const placedFill = [];
-let fillCount = 0;
-for (let attempt = 0; attempt < CFG.nFill * 80 && fillCount < CFG.nFill; attempt++) {
+const maxAttempts = CFG.nFill * 80;
+for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (fill.length >= CFG.nFill) break;
     const t = randRange(0, Math.PI * 2);
-    const r = randRange(0, 0.84);
+    const r = randRange(0.0, 0.86);
     const h = heartParametric(t);
-    const s = heartToScreen(h.x * r, h.y * r);
-    if (tooClose(s.x, s.y, placedFill, CFG.fillGap)) continue;
-    placedFill.push(s);
-    fillCount++;
-    heartParticles.push({
-        hx: h.x * r, hy: h.y * r,
-        order: Math.floor(randRange(0, 50)),
+    const ref = heartToRefScreen(h.x * r, h.y * r);
+    if (tooClose(ref.x, ref.y, placedFill, CFG.fillGap)) continue;
+    placedFill.push(ref);
+    const order = randInt(0, 50);
+    fill.push({
+        hx: h.x * r,
+        hy: h.y * r,
+        order: order,
         kind: "fill",
         word: randChoice(CFG.heartWords),
         color: randChoice(CFG.colors),
         alpha: 0,
         flicker: randRange(0, Math.PI * 2),
-        delay: fillStart + randRange(0, 50),
+        delay: fillStart + order,
         sizeMult: randRange(0.85, 1.15)
     });
 }
 
-// Floating particles
+const heartParticles = [...outline, ...fill];
+
+// 3. Floating Particles (1000 partikel seperti Python)
 class FloatingParticle {
     constructor() {
-        this.reset(true);
+        this.randomize(true);
     }
-    reset(scatterY = false) {
-        this.x = randRange(20, width - 20);
+    randomize(scatterY = false) {
+        this.x = randRange(50, Math.max(100, width - 50));
         this.y = scatterY ? randRange(0, height) : height + randRange(20, 100);
         this.word = randChoice(CFG.floatWords);
         this.color = randChoice(CFG.colors);
-        this.size = Math.floor(randRange(11, 18));
+        this.size = randInt(10, 18);
         this.alpha = 0;
-        this.maxAlpha = randRange(0.2, 0.55);
+        this.maxAlpha = randInt(40, 120);
         this.vx = randRange(-0.3, 0.3);
         this.vy = randRange(-0.4, -1.2);
         this.swaySpeed = randRange(0.01, 0.04);
@@ -153,96 +185,138 @@ class FloatingParticle {
         this.phase = randRange(0, Math.PI * 2);
         this.fadingIn = true;
         this.life = 0;
-        this.maxLife = Math.floor(randRange(300, 700));
+        this.maxLife = randInt(300, 700);
     }
     update(frame) {
-        this.life++;
+        this.life += 1;
         this.x += this.vx + Math.sin(frame * this.swaySpeed + this.phase) * this.swayAmount;
         this.y += this.vy;
 
         if (this.fadingIn) {
-            this.alpha = Math.min(this.maxAlpha, this.alpha + 0.012);
-            if (this.alpha >= this.maxAlpha) this.fadingIn = false;
+            this.alpha = Math.min(this.maxAlpha, this.alpha + 3);
+            if (this.alpha >= this.maxAlpha) {
+                this.fadingIn = false;
+            }
         }
         if (this.life > this.maxLife - 60) {
-            this.alpha = Math.max(0, this.alpha - 0.012);
+            this.alpha = Math.max(0, this.alpha - 3);
         }
-        if (this.y < -50 || this.x < -50 || this.x > width + 50 || (this.alpha <= 0 && this.life > 60)) {
-            this.reset(false);
+
+        const offScreen = this.y < -50 || this.x < -50 || this.x > width + 50;
+        if (offScreen || (this.alpha <= 0 && this.life > 60)) {
+            this.randomize(false);
         }
-    }
-    draw() {
-        if (this.alpha <= 0) return;
-        ctx.save();
-        ctx.globalAlpha = this.alpha;
-        ctx.fillStyle = this.color;
-        ctx.font = `${this.size}px Arial`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(this.word, this.x, this.y);
-        ctx.restore();
     }
 }
 
 const floating = Array.from({ length: CFG.nFloating }, () => new FloatingParticle());
 
+// Mengunci kecepatan logika animasi tepat di 120 FPS (sama persis dengan clock.tick(120) di Pygame)
 let frame = 0;
-function animate() {
-    frame++;
+const stepMs = 1000 / CFG.fps;
+let lastTime = performance.now();
+let accumulator = 0;
+
+function updateLogic() {
+    frame += 1;
+
+    for (let i = 0; i < floating.length; i++) {
+        floating[i].update(frame);
+    }
+
+    for (let i = 0; i < heartParticles.length; i++) {
+        const p = heartParticles[i];
+        if (frame > p.delay && p.alpha < 255) {
+            p.alpha = Math.min(255, p.alpha + CFG.fadeSpeedMin + randInt(0, CFG.fadeSpeedRand));
+        }
+    }
+}
+
+function render() {
     ctx.fillStyle = "rgb(15, 0, 0)";
     ctx.fillRect(0, 0, width, height);
-
-    for (const fp of floating) {
-        fp.update(frame);
-        fp.draw();
-    }
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    for (const p of heartParticles) {
-        if (frame > p.delay && p.alpha < 1) {
-            p.alpha = Math.min(1, p.alpha + randRange(0.08, 0.14));
+    // Render floating particles
+    for (let i = 0; i < floating.length; i++) {
+        const fp = floating[i];
+        if (fp.alpha > 0) {
+            const [r, g, b] = fp.color;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fp.alpha / 255})`;
+            ctx.font = `${fp.size}px Arial, sans-serif`;
+            ctx.fillText(fp.word, fp.x, fp.y);
         }
-        const flicker = p.alpha >= 1 ? 0.75 + 0.25 * Math.sin(frame * 0.04 + p.flicker) : 1;
-        const alpha = p.alpha * flicker;
+    }
+
+    // Render heart particles dengan efek glow
+    const scaleRatio = scale / 20;
+    for (let i = 0; i < heartParticles.length; i++) {
+        const p = heartParticles[i];
+        const flicker = p.alpha >= 255 ? 0.75 + 0.25 * Math.sin(frame * 0.04 + p.flicker) : 1.0;
+        const alpha = Math.floor(p.alpha * flicker);
 
         if (alpha > 0) {
             const pos = heartToScreen(p.hx, p.hy);
-            const baseSize = p.kind === "outline" ? 13 : 11;
-            const fontSize = Math.round(baseSize * p.sizeMult * (scale / 20));
+            const [r, g, b] = p.color;
+            const normAlpha = alpha / 255;
+            const baseSize = p.kind === "outline" ? 20 : 17;
+            const fontSize = Math.max(8, Math.round(baseSize * p.sizeMult * scaleRatio));
 
             ctx.save();
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = p.color;
-            ctx.shadowColor = p.color;
-            ctx.shadowBlur = 12;
-            ctx.font = `bold ${Math.max(9, fontSize)}px Arial`;
+            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+
+            if (alpha > 10) {
+                ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, normAlpha * 0.85)})`;
+                ctx.shadowBlur = 18 * scaleRatio;
+            }
+
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${normAlpha})`;
             ctx.fillText(p.word, pos.x, pos.y);
             ctx.restore();
         }
     }
 
+    // Render center text ("I Love You Anisa")
     if (frame > centerStart) {
-        const progress = Math.min(1, (frame - centerStart) / 30);
-        const centerAlpha = 1 - Math.exp(-progress * 8);
-        const pulse = 1 + 0.025 * Math.sin(frame * 0.05);
-        const centerFontSize = Math.round(38 * (scale / 20) * pulse);
+        const progress = Math.min(1.0, (frame - centerStart) / 30.0);
+        const centerAlpha = Math.floor(255 * (1 - Math.exp(-progress * 8)));
+        const pulse = 1.0 + 0.025 * Math.sin(frame * 0.05);
+        const normAlpha = centerAlpha / 255;
+        const centerFontSize = Math.max(18, Math.round(54 * scaleRatio * pulse));
+
+        const cy = centerY + (height * CFG.yOffsetRatio);
 
         ctx.save();
-        ctx.globalAlpha = centerAlpha;
-        ctx.fillStyle = "rgb(255, 200, 200)";
-        ctx.shadowColor = "rgb(255, 50, 50)";
-        ctx.shadowBlur = 20;
-        ctx.font = `bold ${Math.max(20, centerFontSize)}px Georgia, serif`;
-        ctx.fillText(CFG.centerText, centerX, centerY + CFG.yOffset);
+        ctx.font = `bold ${centerFontSize}px Georgia, serif`;
+
+        if (centerAlpha > 10) {
+            ctx.shadowColor = `rgba(255, 60, 60, ${normAlpha * 0.7})`;
+            ctx.shadowBlur = 24 * scaleRatio;
+        }
+
+        ctx.fillStyle = `rgba(255, 200, 200, ${normAlpha})`;
+        ctx.fillText(CFG.centerText, centerX, cy);
         ctx.restore();
     }
-
-    requestAnimationFrame(animate);
 }
 
-animate();
+function loop(now) {
+    const dt = Math.min(now - lastTime, 100);
+    lastTime = now;
+    accumulator += dt;
+
+    while (accumulator >= stepMs) {
+        updateLogic();
+        accumulator -= stepMs;
+    }
+
+    render();
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
