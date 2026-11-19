@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I love you Anisa &lt;3</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: rgb(15, 0, 0);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let width, height, centerX, centerY, scale;
+
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    centerX = width / 2;
+    centerY = height / 2;
+    scale = Math.min(width, height) / 48;
+}
+window.addEventListener("resize", resize);
+resize();
+
+const CFG = {
+    yOffset: -25,
+    nOutline: 140,
+    nFill: 100,
+    nFloating: 180,
+    outlineGap: 35,
+    fillGap: 45,
+    framesPerStep: 0.5,
+    fillDelayOffset: 10,
+    centerDelay: 40,
+    heartWords: ["i love you anisa", "I LOVE YOU ANISA", "love you anisa"],
+    centerText: "I Love You Anisa",
+    floatWords: ["love", "♥", "anisa", "❤"],
+    colors: [
+        "rgb(255, 20, 20)",
+        "rgb(220, 20, 60)",
+        "rgb(255, 0, 0)",
+        "rgb(178, 34, 34)",
+        "rgb(255, 60, 60)"
+    ]
+};
+
+function randChoice(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randRange(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function heartParametric(t) {
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    return { x, y: -y };
+}
+
+function heartToScreen(hx, hy) {
+    return {
+        x: hx * scale + centerX,
+        y: hy * scale + centerY + CFG.yOffset
+    };
+}
+
+function tooClose(sx, sy, placed, gap) {
+    return placed.some(p => Math.hypot(sx - p.x, sy - p.y) < gap);
+}
+
+// Generate Outline & Fill
+const heartParticles = [];
+const placedOutline = [];
+for (let i = 0; i < CFG.nOutline; i++) {
+    const t = (i / CFG.nOutline) * Math.PI * 2;
+    const h = heartParametric(t);
+    const s = heartToScreen(h.x, h.y);
+    if (tooClose(s.x, s.y, placedOutline, CFG.outlineGap)) continue;
+    placedOutline.push(s);
+    heartParticles.push({
+        hx: h.x, hy: h.y,
+        order: i,
+        kind: "outline",
+        word: randChoice(CFG.heartWords),
+        color: randChoice(CFG.colors),
+        alpha: 0,
+        flicker: randRange(0, Math.PI * 2),
+        delay: i * CFG.framesPerStep,
+        sizeMult: randRange(0.85, 1.15)
+    });
+}
+
+const outlineSpan = heartParticles.length ? Math.max(...heartParticles.map(p => p.order)) : 0;
+const fillStart = outlineSpan * CFG.framesPerStep + CFG.fillDelayOffset;
+const centerStart = fillStart + CFG.centerDelay;
+
+const placedFill = [];
+let fillCount = 0;
+for (let attempt = 0; attempt < CFG.nFill * 80 && fillCount < CFG.nFill; attempt++) {
+    const t = randRange(0, Math.PI * 2);
+    const r = randRange(0, 0.84);
+    const h = heartParametric(t);
+    const s = heartToScreen(h.x * r, h.y * r);
+    if (tooClose(s.x, s.y, placedFill, CFG.fillGap)) continue;
+    placedFill.push(s);
+    fillCount++;
+    heartParticles.push({
+        hx: h.x * r, hy: h.y * r,
+        order: Math.floor(randRange(0, 50)),
+        kind: "fill",
+        word: randChoice(CFG.heartWords),
+        color: randChoice(CFG.colors),
+        alpha: 0,
+        flicker: randRange(0, Math.PI * 2),
+        delay: fillStart + randRange(0, 50),
+        sizeMult: randRange(0.85, 1.15)
+    });
+}
+
+// Floating particles
+class FloatingParticle {
+    constructor() {
+        this.reset(true);
+    }
+    reset(scatterY = false) {
+        this.x = randRange(20, width - 20);
+        this.y = scatterY ? randRange(0, height) : height + randRange(20, 100);
+        this.word = randChoice(CFG.floatWords);
+        this.color = randChoice(CFG.colors);
+        this.size = Math.floor(randRange(11, 18));
+        this.alpha = 0;
+        this.maxAlpha = randRange(0.2, 0.55);
+        this.vx = randRange(-0.3, 0.3);
+        this.vy = randRange(-0.4, -1.2);
+        this.swaySpeed = randRange(0.01, 0.04);
+        this.swayAmount = randRange(0.3, 1.0);
+        this.phase = randRange(0, Math.PI * 2);
+        this.fadingIn = true;
+        this.life = 0;
+        this.maxLife = Math.floor(randRange(300, 700));
+    }
+    update(frame) {
+        this.life++;
+        this.x += this.vx + Math.sin(frame * this.swaySpeed + this.phase) * this.swayAmount;
+        this.y += this.vy;
+
+        if (this.fadingIn) {
+            this.alpha = Math.min(this.maxAlpha, this.alpha + 0.012);
+            if (this.alpha >= this.maxAlpha) this.fadingIn = false;
+        }
+        if (this.life > this.maxLife - 60) {
+            this.alpha = Math.max(0, this.alpha - 0.012);
+        }
+        if (this.y < -50 || this.x < -50 || this.x > width + 50 || (this.alpha <= 0 && this.life > 60)) {
+            this.reset(false);
+        }
+    }
+    draw() {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = this.color;
+        ctx.font = `${this.size}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(this.word, this.x, this.y);
+        ctx.restore();
+    }
+}
+
+const floating = Array.from({ length: CFG.nFloating }, () => new FloatingParticle());
+
+let frame = 0;
+function animate() {
+    frame++;
+    ctx.fillStyle = "rgb(15, 0, 0)";
+    ctx.fillRect(0, 0, width, height);
+
+    for (const fp of floating) {
+        fp.update(frame);
+        fp.draw();
+    }
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (const p of heartParticles) {
+        if (frame > p.delay && p.alpha < 1) {
+            p.alpha = Math.min(1, p.alpha + randRange(0.08, 0.14));
+        }
+        const flicker = p.alpha >= 1 ? 0.75 + 0.25 * Math.sin(frame * 0.04 + p.flicker) : 1;
+        const alpha = p.alpha * flicker;
+
+        if (alpha > 0) {
+            const pos = heartToScreen(p.hx, p.hy);
+            const baseSize = p.kind === "outline" ? 13 : 11;
+            const fontSize = Math.round(baseSize * p.sizeMult * (scale / 20));
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 12;
+            ctx.font = `bold ${Math.max(9, fontSize)}px Arial`;
+            ctx.fillText(p.word, pos.x, pos.y);
+            ctx.restore();
+        }
+    }
+
+    if (frame > centerStart) {
+        const progress = Math.min(1, (frame - centerStart) / 30);
+        const centerAlpha = 1 - Math.exp(-progress * 8);
+        const pulse = 1 + 0.025 * Math.sin(frame * 0.05);
+        const centerFontSize = Math.round(38 * (scale / 20) * pulse);
+
+        ctx.save();
+        ctx.globalAlpha = centerAlpha;
+        ctx.fillStyle = "rgb(255, 200, 200)";
+        ctx.shadowColor = "rgb(255, 50, 50)";
+        ctx.shadowBlur = 20;
+        ctx.font = `bold ${Math.max(20, centerFontSize)}px Georgia, serif`;
+        ctx.fillText(CFG.centerText, centerX, centerY + CFG.yOffset);
+        ctx.restore();
+    }
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
